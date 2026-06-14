@@ -107,6 +107,20 @@ export const DREAM_RECIPES: DreamRecipe[] = [
       heatModifier: 25,
     },
   },
+  {
+    id: 'dr-6',
+    storyId: 's5',
+    characterId: 'fc-9',
+    locationId: 'fl-5',
+    conflictId: 'fx-5',
+    hiddenBranch: {
+      id: 'dream-b6',
+      title: '梦境·官帽奇谈',
+      content: '贾知县忽得一梦，梦见官帽长出双翅，竟能飞上天庭。醒来后他改头换面，一反贪腐常态，竟成了难得一见的清官……',
+      tags: ['讽刺', '奇幻', '梦境'],
+      heatModifier: 19,
+    },
+  },
 ]
 
 const WRONG_COMBO_TITLES = [

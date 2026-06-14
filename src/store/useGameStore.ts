@@ -436,34 +436,63 @@ export const useGameStore = create<GameState & GameActions>()(
         const eligible = satisfactionPass && heatPass && interruptionPass
 
         if (eligible) {
-          const storyFragments = getFragmentsForStory(state.currentStory.id)
-          const shuffled = [...storyFragments].sort(() => Math.random() - 0.5)
-          const selectedFragments = shuffled.slice(0, Math.min(4, shuffled.length))
+          const storyId = state.currentStory.id
+          const storyFragments = getFragmentsForStory(storyId)
+          const storyRecipes = DREAM_RECIPES.filter((r) => r.storyId === storyId)
 
-          const characters = selectedFragments.filter((f) => f.type === 'character')
-          const locations = selectedFragments.filter((f) => f.type === 'location')
-          const conflicts = selectedFragments.filter((f) => f.type === 'conflict')
+          const guaranteedFragments: DreamFragment[] = []
 
-          if (characters.length === 0 || locations.length === 0 || conflicts.length === 0) {
-            const allStoryFragments = getFragmentsForStory(state.currentStory.id)
-            const charPool = allStoryFragments.filter((f) => f.type === 'character')
-            const locPool = allStoryFragments.filter((f) => f.type === 'location')
-            const confPool = allStoryFragments.filter((f) => f.type === 'conflict')
+          for (const recipe of storyRecipes) {
+            const charFrag = FRAGMENT_POOL.find((f) => f.id === recipe.characterId)
+            const locFrag = FRAGMENT_POOL.find((f) => f.id === recipe.locationId)
+            const confFrag = FRAGMENT_POOL.find((f) => f.id === recipe.conflictId)
 
-            if (charPool.length > 0) characters.push(charPool[Math.floor(Math.random() * charPool.length)])
-            if (locPool.length > 0) locations.push(locPool[Math.floor(Math.random() * locPool.length)])
-            if (confPool.length > 0) conflicts.push(confPool[Math.floor(Math.random() * confPool.length)])
+            if (charFrag && !guaranteedFragments.some((f) => f.id === charFrag.id)) {
+              guaranteedFragments.push(charFrag)
+            }
+            if (locFrag && !guaranteedFragments.some((f) => f.id === locFrag.id)) {
+              guaranteedFragments.push(locFrag)
+            }
+            if (confFrag && !guaranteedFragments.some((f) => f.id === confFrag.id)) {
+              guaranteedFragments.push(confFrag)
+            }
           }
 
-          const guaranteedFragments = [...characters, ...locations, ...conflicts]
-          const uniqueFragments = guaranteedFragments.filter(
+          const existingIds = state.dreamFragments.map((f) => f.id)
+          const newFragments = guaranteedFragments.filter((f) => !existingIds.includes(f.id))
+
+          const hasCharacters = newFragments.some((f) => f.type === 'character')
+          const hasLocations = newFragments.some((f) => f.type === 'location')
+          const hasConflicts = newFragments.some((f) => f.type === 'conflict')
+
+          if (!hasCharacters || !hasLocations || !hasConflicts) {
+            const extraPool = storyFragments.filter(
+              (f) => !guaranteedFragments.some((g) => g.id === f.id) && !existingIds.includes(f.id)
+            )
+            const shuffled = [...extraPool].sort(() => Math.random() - 0.5)
+
+            if (!hasCharacters) {
+              const char = shuffled.find((f) => f.type === 'character')
+              if (char) newFragments.push(char)
+            }
+            if (!hasLocations) {
+              const loc = shuffled.find((f) => f.type === 'location')
+              if (loc) newFragments.push(loc)
+            }
+            if (!hasConflicts) {
+              const conf = shuffled.find((f) => f.type === 'conflict')
+              if (conf) newFragments.push(conf)
+            }
+          }
+
+          const uniqueNewFragments = newFragments.filter(
             (frag, index, self) => self.findIndex((f) => f.id === frag.id) === index
           )
 
           set((s) => ({
             dreamEligible: true,
             dreamChecked: true,
-            dreamFragments: [...s.dreamFragments, ...uniqueFragments],
+            dreamFragments: [...s.dreamFragments, ...uniqueNewFragments],
             showDreamModal: true,
           }))
         } else {
@@ -568,6 +597,9 @@ export const useGameStore = create<GameState & GameActions>()(
         reputationHistory: s.reputationHistory,
         lastStoryDay: s.lastStoryDay,
         storyScores: s.storyScores,
+        dreamFragments: s.dreamFragments,
+        rumors: s.rumors,
+        unlockedDreamBranches: s.unlockedDreamBranches,
       }),
     }
   )
