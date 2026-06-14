@@ -14,6 +14,9 @@ import type {
   StoryRecord,
   ReputationHistory,
   Renovation,
+  DreamFragment,
+  DreamCombinationResult,
+  Rumor,
 } from '@/types'
 import { STORIES } from '@/data/stories'
 import { initSnacks } from '@/data/snacks'
@@ -22,6 +25,7 @@ import { initRenovations, getUpgradeCost } from '@/data/renovations'
 import { INTERRUPTIONS } from '@/data/interruptions'
 import { generateRandomCustomers } from '@/data/customers'
 import { calcSettlement } from '@/utils/settlement'
+import { FRAGMENT_POOL, DREAM_RECIPES, getFragmentsForStory, generateRumorContent } from '@/data/dreamFragments'
 
 const WEATHERS: Weather[] = ['晴', '晴', '晴', '云', '云', '雨', '雪']
 
@@ -67,6 +71,15 @@ const initialState: GameState = {
   storyScores: {},
   isSettlement: false,
   lastSettlement: null,
+  dreamFragments: [],
+  rumors: [],
+  dreamEligible: false,
+  dreamChecked: false,
+  unlockedDreamBranches: [],
+  showDreamModal: false,
+  interruptionCount: 0,
+  successfulInterruptions: 0,
+  lastDreamResult: null,
 }
 
 interface GameActions {
@@ -82,6 +95,11 @@ interface GameActions {
   nextDay: () => void
   resetGame: () => void
   addLedgerRecord: (type: LedgerRecord['type'], category: string, amount: number, note: string) => void
+  checkDreamEligibility: () => void
+  combineFragments: (characterId: string, locationId: string, conflictId: string) => DreamCombinationResult | null
+  dismissDream: () => void
+  openDreamModal: () => void
+  closeDreamModal: () => void
 }
 
 export const useGameStore = create<GameState & GameActions>()(
@@ -180,14 +198,24 @@ export const useGameStore = create<GameState & GameActions>()(
           storyProgress: 0,
           performanceActive: false,
           currentInterruption: null,
+          interruptionCount: 0,
+          successfulInterruptions: 0,
+          dreamEligible: false,
+          dreamChecked: false,
+          showDreamModal: false,
+          lastDreamResult: null,
         })
       },
 
       selectStory: (storyId: string, branchId: string) => {
         const state = get()
         const story = state.availableStories.find((s) => s.id === storyId)
-        const branch = story?.branches.find((b) => b.id === branchId)
-        if (!story || !branch) return
+        if (!story) return
+        let branch = story.branches.find((b) => b.id === branchId)
+        if (!branch) {
+          branch = state.unlockedDreamBranches.find((b) => b.id === branchId) || null
+        }
+        if (!branch) return
         set({ currentStory: story, currentBranch: branch, storyProgress: 0 })
       },
 
@@ -243,12 +271,15 @@ export const useGameStore = create<GameState & GameActions>()(
         }))
 
         const newReputation = Math.max(0, Math.min(100, state.reputation + option.reputationEffect))
+        const isSuccess = option.satisfactionEffect >= 0 && option.reputationEffect >= 0
 
         set({
           currentInterruption: null,
           customers,
           gold: state.gold + option.goldEffect,
           reputation: newReputation,
+          interruptionCount: state.interruptionCount + 1,
+          successfulInterruptions: state.successfulInterruptions + (isSuccess ? 1 : 0),
         })
 
         if (option.goldEffect !== 0) {
@@ -346,6 +377,8 @@ export const useGameStore = create<GameState & GameActions>()(
           get().addLedgerRecord('收入', '茶点售卖', result.snackRevenue, '消费茶点')
         if (result.badReviewPenalty > 0)
           get().addLedgerRecord('支出', '差评损失', result.badReviewPenalty, '客人不满索赔')
+
+        setTimeout(() => get().checkDreamEligibility(), 800)
       },
 
       nextDay: () => {
@@ -384,6 +417,141 @@ export const useGameStore = create<GameState & GameActions>()(
             },
           ],
         }))
+      },
+
+      checkDreamEligibility: () => {
+        const state = get()
+        if (!state.currentStory || !state.lastSettlement || state.dreamChecked) return
+
+        const { avgSatisfaction } = state.lastSettlement
+        const storyHeat = state.currentStory.heat + (state.currentBranch?.heatModifier || 0)
+        const interruptionSuccessRate = state.interruptionCount > 0
+          ? state.successfulInterruptions / state.interruptionCount
+          : 1
+
+        const satisfactionPass = avgSatisfaction >= 70
+        const heatPass = storyHeat >= 60
+        const interruptionPass = state.interruptionCount === 0 || interruptionSuccessRate >= 0.5
+
+        const eligible = satisfactionPass && heatPass && interruptionPass
+
+        if (eligible) {
+          const storyFragments = getFragmentsForStory(state.currentStory.id)
+          const shuffled = [...storyFragments].sort(() => Math.random() - 0.5)
+          const selectedFragments = shuffled.slice(0, Math.min(4, shuffled.length))
+
+          const characters = selectedFragments.filter((f) => f.type === 'character')
+          const locations = selectedFragments.filter((f) => f.type === 'location')
+          const conflicts = selectedFragments.filter((f) => f.type === 'conflict')
+
+          if (characters.length === 0 || locations.length === 0 || conflicts.length === 0) {
+            const allStoryFragments = getFragmentsForStory(state.currentStory.id)
+            const charPool = allStoryFragments.filter((f) => f.type === 'character')
+            const locPool = allStoryFragments.filter((f) => f.type === 'location')
+            const confPool = allStoryFragments.filter((f) => f.type === 'conflict')
+
+            if (charPool.length > 0) characters.push(charPool[Math.floor(Math.random() * charPool.length)])
+            if (locPool.length > 0) locations.push(locPool[Math.floor(Math.random() * locPool.length)])
+            if (confPool.length > 0) conflicts.push(confPool[Math.floor(Math.random() * confPool.length)])
+          }
+
+          const guaranteedFragments = [...characters, ...locations, ...conflicts]
+          const uniqueFragments = guaranteedFragments.filter(
+            (frag, index, self) => self.findIndex((f) => f.id === frag.id) === index
+          )
+
+          set((s) => ({
+            dreamEligible: true,
+            dreamChecked: true,
+            dreamFragments: [...s.dreamFragments, ...uniqueFragments],
+            showDreamModal: true,
+          }))
+        } else {
+          set({ dreamEligible: false, dreamChecked: true })
+        }
+      },
+
+      combineFragments: (characterId: string, locationId: string, conflictId: string) => {
+        const state = get()
+
+        const character = FRAGMENT_POOL.find((f) => f.id === characterId)
+        const location = FRAGMENT_POOL.find((f) => f.id === locationId)
+        const conflict = FRAGMENT_POOL.find((f) => f.id === conflictId)
+
+        if (!character || !location || !conflict) return null
+
+        const recipe = DREAM_RECIPES.find(
+          (r) => r.characterId === characterId && r.locationId === locationId && r.conflictId === conflictId
+        )
+
+        if (recipe) {
+          const alreadyUnlocked = state.unlockedDreamBranches.some((b) => b.id === recipe.hiddenBranch.id)
+          if (!alreadyUnlocked) {
+            set((s) => ({
+              unlockedDreamBranches: [...s.unlockedDreamBranches, recipe.hiddenBranch],
+              lastDreamResult: {
+                success: true,
+                hiddenBranch: recipe.hiddenBranch,
+              },
+            }))
+          } else {
+            set({
+              lastDreamResult: {
+                success: true,
+                hiddenBranch: recipe.hiddenBranch,
+              },
+            })
+          }
+          return { success: true, hiddenBranch: recipe.hiddenBranch }
+        } else {
+          const rumorContent = generateRumorContent(character.name, location.name, conflict.name)
+          const rumor = {
+            id: `rumor-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            day: state.day,
+            title: rumorContent.title,
+            content: rumorContent.content,
+            fragments: { character: character.name, location: location.name, conflict: conflict.name },
+            timestamp: Date.now(),
+          }
+
+          const repPenalty = Math.floor(Math.random() * 5) + 1
+          const newRep = Math.max(0, state.reputation - repPenalty)
+
+          set((s) => ({
+            rumors: [...s.rumors, rumor],
+            reputation: newRep,
+            reputationHistory: [
+              ...s.reputationHistory,
+              {
+                day: s.day,
+                value: newRep,
+                delta: -repPenalty,
+                reason: '荒腔走板传闻流传',
+              },
+            ],
+            lastDreamResult: {
+              success: false,
+              rumor,
+            },
+          }))
+
+          return { success: false, rumor }
+        }
+      },
+
+      dismissDream: () => {
+        set({ showDreamModal: false, lastDreamResult: null })
+      },
+
+      openDreamModal: () => {
+        const state = get()
+        if (state.dreamEligible) {
+          set({ showDreamModal: true })
+        }
+      },
+
+      closeDreamModal: () => {
+        set({ showDreamModal: false })
       },
     }),
     {

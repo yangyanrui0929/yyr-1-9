@@ -4,6 +4,7 @@ import StatusPanel from '@/components/StatusPanel'
 import StoryPicker from '@/components/StoryPicker'
 import Performance from '@/components/Performance'
 import Settlement from '@/components/Settlement'
+import DreamContinuation from '@/components/DreamContinuation'
 import { useGameStore } from '@/store/useGameStore'
 
 export default function NightPhase() {
@@ -42,6 +43,7 @@ export default function NightPhase() {
         </div>
 
         <Settlement />
+        <DreamContinuation />
       </div>
     </div>
   )

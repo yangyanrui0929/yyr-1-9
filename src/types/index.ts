@@ -148,6 +148,15 @@ export interface GameState {
   storyScores: Record<string, number[]>
   isSettlement: boolean
   lastSettlement: SettlementResult | null
+  dreamFragments: DreamFragment[]
+  rumors: Rumor[]
+  dreamEligible: boolean
+  dreamChecked: boolean
+  unlockedDreamBranches: StoryBranch[]
+  showDreamModal: boolean
+  interruptionCount: number
+  successfulInterruptions: number
+  lastDreamResult: DreamCombinationResult | null
 }
 
 export interface SettlementResult {
@@ -164,6 +173,47 @@ export interface SettlementResult {
   totalEarnings: number
   reputationDelta: number
   avgSatisfaction: number
+}
+
+export type DreamFragmentType = 'character' | 'location' | 'conflict'
+
+export interface DreamFragment {
+  id: string
+  type: DreamFragmentType
+  name: string
+  description: string
+  sourceStoryId: string
+  emoji: string
+}
+
+export interface DreamRecipe {
+  id: string
+  storyId: string
+  characterId: string
+  locationId: string
+  conflictId: string
+  hiddenBranch: {
+    id: string
+    title: string
+    content: string
+    tags: string[]
+    heatModifier: number
+  }
+}
+
+export interface DreamCombinationResult {
+  success: boolean
+  hiddenBranch?: StoryBranch
+  rumor?: Rumor
+}
+
+export interface Rumor {
+  id: string
+  day: number
+  title: string
+  content: string
+  fragments: { character: string; location: string; conflict: string }
+  timestamp: number
 }
 
 export interface CalcResult {

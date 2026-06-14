@@ -19,6 +19,7 @@ export default function StoryPicker() {
     storyScores,
     startPerformance,
     customers,
+    unlockedDreamBranches,
   } = useGameStore()
 
   const [selectedStoryId, setSelectedStoryId] = useState<string | null>(null)
@@ -140,6 +141,41 @@ export default function StoryPicker() {
                               </button>
                             )
                           })}
+
+                          {unlockedDreamBranches
+                            .filter((b) => b.tags.some((t) => story.tags.includes(t) || b.title.includes(story.title.split('·')[0])))
+                            .map((b: StoryBranch) => {
+                              const tm = tasteMatchForBranch(b)
+                              return (
+                                <button
+                                  key={b.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    selectStory(story.id, b.id)
+                                  }}
+                                  className="w-full text-left px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-sm transition-all border-2 border-indigo-300 hover:border-indigo-500"
+                                >
+                                  <div className="font-medium flex justify-between items-center text-indigo-700">
+                                    <span className="flex items-center gap-1">
+                                      <span className="text-xs">✨</span> {b.title}
+                                    </span>
+                                    <span className="text-xs text-indigo-600 font-semibold">
+                                      匹配 {tm.value}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {b.tags.map((t) => (
+                                      <span key={t} className="text-[10px] text-indigo-500">
+                                        #{t}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="text-[10px] text-indigo-400 mt-1">
+                                    🔥 热度加成 +{b.heatModifier}
+                                  </div>
+                                </button>
+                              )
+                            })}
                         </div>
                       </div>
                     )}
